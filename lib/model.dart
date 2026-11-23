@@ -2,6 +2,7 @@ import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 import 'package:characters/characters.dart';
+import 'package:intl/intl.dart';
 
 part 'model.g.dart';
 
@@ -399,11 +400,51 @@ abstract class WorkQueue implements Built<WorkQueue, WorkQueueBuilder> {
   WorkQueue._();
 }
 
+/// Estadísticas para mostrar en pantalla.
+abstract class DisplayInfo implements Built<DisplayInfo, DisplayInfoBuilder> {
+  static Serializer<DisplayInfo> get serializer => _$displayInfoSerializer;
+
+  String get wordsInGridCount;
+  String get candidateWordsCount;
+  String get locationsToExploreCount;
+  String get knownBadLocationsCount;
+  String get gridFilledPercentage;
+
+  factory DisplayInfo.from({required WorkQueue workQueue}) {
+    final gridFilled = workQueue.crossword.characters.length /
+        (workQueue.crossword.width * workQueue.crossword.height);
+    final fmt = NumberFormat.decimalPattern();
+
+    return DisplayInfo(
+      (b) => b
+        ..wordsInGridCount = fmt.format(workQueue.crossword.words.length)
+        ..candidateWordsCount = fmt.format(workQueue.candidateWords.length)
+        ..locationsToExploreCount = fmt.format(workQueue.locationsToTry.length)
+        ..knownBadLocationsCount = fmt.format(workQueue.badLocations.length)
+        ..gridFilledPercentage = '${(gridFilled * 100).toStringAsFixed(2)}%',
+    );
+  }
+
+  static DisplayInfo get empty => DisplayInfo(
+        (b) => b
+          ..wordsInGridCount = '0'
+          ..candidateWordsCount = '0'
+          ..locationsToExploreCount = '0'
+          ..knownBadLocationsCount = '0'
+          ..gridFilledPercentage = '0%',
+      );
+
+  factory DisplayInfo([void Function(DisplayInfoBuilder)? updates]) =
+      _$DisplayInfo;
+  DisplayInfo._();
+}
+
 @SerializersFor([
   Location,
   Crossword,
   CrosswordWord,
   CrosswordCharacter,
   WorkQueue,
+  DisplayInfo,
 ])
 final Serializers serializers = _$serializers;

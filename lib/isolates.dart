@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'model.dart';
 import 'utils.dart';
 
-Stream<Crossword> exploreCrosswordSolutions({
+Stream<WorkQueue> exploreCrosswordSolutions({
   required Crossword crossword,
   required BuiltSet<String> wordList,
 }) async* {
@@ -27,7 +27,6 @@ Stream<Crossword> exploreCrosswordSolutions({
           final direction = workQueue.locationsToTry[location]!;
           final target = workQueue.crossword.characters[location];
 
-          // Celda vacía (primera palabra): probamos una palabra al azar.
           if (target == null) {
             return workQueue.crossword.addWord(
               direction: direction,
@@ -36,7 +35,6 @@ Stream<Crossword> exploreCrosswordSolutions({
             );
           }
 
-          // Solo palabras que contengan la letra de la intersección, mezcladas.
           final words = workQueue.candidateWords.toBuiltList().rebuild(
                 (b) => b
                   ..where((word) => word.characters.contains(target.character))
@@ -49,7 +47,6 @@ Stream<Crossword> exploreCrosswordSolutions({
             for (final (index, character) in word.characters.indexed) {
               if (character != target.character) continue;
 
-              // Corremos la palabra para que esa letra caiga en la intersección.
               final candidate = workQueue.crossword.addWord(
                 location: switch (direction) {
                   Direction.across => location.leftOffset(index),
@@ -73,10 +70,10 @@ Stream<Crossword> exploreCrosswordSolutions({
 
       if (newCrossword != null) {
         workQueue = workQueue.updateFrom(newCrossword);
-        yield newCrossword;
       } else {
         workQueue = workQueue.remove(location);
       }
+      yield workQueue;
     } catch (e) {
       debugPrint('Error en el isolate: $e');
     }
