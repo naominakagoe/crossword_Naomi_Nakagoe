@@ -1,18 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'widgets/crossword_generator_app.dart';
+import 'widgets/crossword_puzzle_app.dart';
 
 void main() {
   runApp(
     ProviderScope(
       child: MaterialApp(
+        title: 'Crossword Puzzle',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorSchemeSeed: Colors.blueGrey,
           brightness: Brightness.light,
         ),
-        home: CrosswordGeneratorApp(),
+        home: CrosswordPuzzleApp(),
       ),
     ),
   );

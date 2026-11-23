@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:built_collection/built_collection.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +9,8 @@ import 'isolates.dart';
 import 'model.dart' as model;
 
 part 'providers.g.dart';
+
+const backgroundWorkerCount = 4;
 
 @riverpod
 Future<BuiltSet<String>> wordList(Ref ref) async {
@@ -50,41 +51,10 @@ class Size extends _$Size {
   }
 }
 
-enum BackgroundWorkers {
-  one(1),
-  two(2),
-  four(4),
-  eight(8),
-  sixteen(16),
-  thirtyTwo(32),
-  sixtyFour(64),
-  oneTwentyEight(128);
-
-  const BackgroundWorkers(this.count);
-
-  final int count;
-  String get label => count.toString();
-}
-
-@Riverpod(keepAlive: true)
-class WorkerCount extends _$WorkerCount {
-  var _count = BackgroundWorkers.four;
-
-  @override
-  BackgroundWorkers build() => _count;
-
-  void setCount(BackgroundWorkers count) {
-    _count = count;
-    ref.invalidateSelf();
-  }
-}
-
 @riverpod
 Stream<model.WorkQueue> workQueue(Ref ref) async* {
   final size = ref.watch(sizeProvider);
   final wordListAsync = ref.watch(wordListProvider);
-
-  final workers = ref.watch(workerCountProvider);
 
   final emptyCrossword = model.Crossword.crossword(
     width: size.width,
@@ -96,14 +66,11 @@ Stream<model.WorkQueue> workQueue(Ref ref) async* {
     startLocation: model.Location.at(0, 0),
   );
 
-  ref.read(startTimeProvider.notifier).start();
-  ref.read(endTimeProvider.notifier).clear();
-
   yield* wordListAsync.when(
     data: (wordList) => exploreCrosswordSolutions(
       crossword: emptyCrossword,
       wordList: wordList,
-      maxWorkerCount: workers.count,
+      maxWorkerCount: backgroundWorkerCount,
     ),
     error: (error, stackTrace) async* {
       debugPrint('Error cargando la lista de palabras: $error');
@@ -113,93 +80,76 @@ Stream<model.WorkQueue> workQueue(Ref ref) async* {
       yield emptyWorkQueue;
     },
   );
-
-  ref.read(endTimeProvider.notifier).end();
 }
-
-@Riverpod(keepAlive: true)
-class StartTime extends _$StartTime {
-  @override
-  DateTime? build() => _start;
-
-  DateTime? _start;
-
-  void start() {
-    _start = DateTime.now();
-    ref.invalidateSelf();
-  }
-}
-
-@Riverpod(keepAlive: true)
-class EndTime extends _$EndTime {
-  @override
-  DateTime? build() => _end;
-
-  DateTime? _end;
-
-  void clear() {
-    _end = null;
-    ref.invalidateSelf();
-  }
-
-  void end() {
-    _end = DateTime.now();
-    ref.invalidateSelf();
-  }
-}
-
-const _estimatedTotalCoverage = 0.54;
 
 @riverpod
-Duration expectedRemainingTime(Ref ref) {
-  final startTime = ref.watch(startTimeProvider);
-  final endTime = ref.watch(endTimeProvider);
-  final workQueueAsync = ref.watch(workQueueProvider);
-
-  return workQueueAsync.when(
-    data: (workQueue) {
-      if (startTime == null || endTime != null || workQueue.isCompleted) {
-        return Duration.zero;
-      }
-      try {
-        final soFar = DateTime.now().difference(startTime);
-        final completedPercentage = min(
-          0.99,
-          workQueue.crossword.characters.length /
-              (workQueue.crossword.width * workQueue.crossword.height) /
-              _estimatedTotalCoverage,
-        );
-        final expectedTotal = soFar.inSeconds / completedPercentage;
-        final expectedRemaining = expectedTotal - soFar.inSeconds;
-        return Duration(seconds: expectedRemaining.toInt());
-      } catch (e) {
-        return Duration.zero;
-      }
-    },
-    error: (error, stackTrace) => Duration.zero,
-    loading: () => Duration.zero,
+class Puzzle extends _$Puzzle {
+  model.CrosswordPuzzleGame _puzzle = model.CrosswordPuzzleGame.from(
+    crossword: model.Crossword.crossword(width: 0, height: 0),
+    candidateWords: BuiltSet<String>(),
   );
-}
-
-@Riverpod(keepAlive: true)
-class ShowDisplayInfo extends _$ShowDisplayInfo {
-  var _display = true;
 
   @override
-  bool build() => _display;
+  model.CrosswordPuzzleGame build() {
+    final size = ref.watch(sizeProvider);
+    final wordList = ref.watch(wordListProvider).value;
+    final workQueue = ref.watch(workQueueProvider).value;
 
-  void toggle() {
-    _display = !_display;
-    ref.invalidateSelf();
+    // Cuando el generador termina, armamos el juego en segundo plano.
+    if (wordList != null &&
+        workQueue != null &&
+        workQueue.isCompleted &&
+        (_puzzle.crossword.width != size.width ||
+            _puzzle.crossword.height != size.height ||
+            _puzzle.crossword != workQueue.crossword)) {
+      compute(_puzzleFromCrosswordTrampoline, (workQueue.crossword, wordList))
+          .then((puzzle) {
+        _puzzle = puzzle;
+        ref.invalidateSelf();
+      });
+    }
+
+    return _puzzle;
   }
-}
 
-@riverpod
-class DisplayInfo extends _$DisplayInfo {
-  @override
-  model.DisplayInfo build() => ref.watch(workQueueProvider).when(
-        data: (workQueue) => model.DisplayInfo.from(workQueue: workQueue),
-        error: (error, stackTrace) => model.DisplayInfo.empty,
-        loading: () => model.DisplayInfo.empty,
+  Future<void> selectWord({
+    required model.Location location,
+    required String word,
+    required model.Direction direction,
+  }) async {
+    final candidate = await compute(
+      _puzzleSelectWordTrampoline,
+      (_puzzle, location, word, direction),
+    );
+
+    if (candidate != null) {
+      _puzzle = candidate;
+      ref.invalidateSelf();
+    } else {
+      debugPrint('Selección inválida: $word');
+    }
+  }
+
+  bool canSelectWord({
+    required model.Location location,
+    required String word,
+    required model.Direction direction,
+  }) =>
+      _puzzle.canSelectWord(
+        location: location,
+        word: word,
+        direction: direction,
       );
 }
+
+// Funciones de nivel superior para compute(), así el isolate
+// no captura la referencia a Puzzle.
+Future<model.CrosswordPuzzleGame> _puzzleFromCrosswordTrampoline(
+  (model.Crossword, BuiltSet<String>) args,
+) async =>
+    model.CrosswordPuzzleGame.from(crossword: args.$1, candidateWords: args.$2);
+
+model.CrosswordPuzzleGame? _puzzleSelectWordTrampoline(
+  (model.CrosswordPuzzleGame, model.Location, String, model.Direction) args,
+) =>
+    args.$1.selectWord(location: args.$2, word: args.$3, direction: args.$4);

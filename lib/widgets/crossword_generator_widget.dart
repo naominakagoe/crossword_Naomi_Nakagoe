@@ -5,8 +5,10 @@ import 'package:two_dimensional_scrollables/two_dimensional_scrollables.dart';
 import '../model.dart';
 import '../providers.dart';
 
-class CrosswordWidget extends ConsumerWidget {
-  const CrosswordWidget({super.key});
+/// Muestra la grilla mientras se genera, con '•' en las celdas ocupadas
+/// para no revelar las palabras.
+class CrosswordGeneratorWidget extends ConsumerWidget {
+  const CrosswordGeneratorWidget({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,7 +23,7 @@ class CrosswordWidget extends ConsumerWidget {
     );
   }
 
-    TableViewCell _buildCell(BuildContext context, TableVicinity vicinity) {
+  TableViewCell _buildCell(BuildContext context, TableVicinity vicinity) {
     final location = Location.at(vicinity.column, vicinity.row);
 
     return TableViewCell(
@@ -62,7 +64,7 @@ class CrosswordWidget extends ConsumerWidget {
                     fontSize: 24,
                     color: explorationCell ? colors.onPrimary : colors.primary,
                   ),
-                  child: Text(character.character),
+                  child: Text('•'),
                 ),
               ),
             );
