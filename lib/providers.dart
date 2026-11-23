@@ -50,10 +50,41 @@ class Size extends _$Size {
   }
 }
 
+enum BackgroundWorkers {
+  one(1),
+  two(2),
+  four(4),
+  eight(8),
+  sixteen(16),
+  thirtyTwo(32),
+  sixtyFour(64),
+  oneTwentyEight(128);
+
+  const BackgroundWorkers(this.count);
+
+  final int count;
+  String get label => count.toString();
+}
+
+@Riverpod(keepAlive: true)
+class WorkerCount extends _$WorkerCount {
+  var _count = BackgroundWorkers.four;
+
+  @override
+  BackgroundWorkers build() => _count;
+
+  void setCount(BackgroundWorkers count) {
+    _count = count;
+    ref.invalidateSelf();
+  }
+}
+
 @riverpod
 Stream<model.WorkQueue> workQueue(Ref ref) async* {
   final size = ref.watch(sizeProvider);
   final wordListAsync = ref.watch(wordListProvider);
+
+  final workers = ref.watch(workerCountProvider);
 
   final emptyCrossword = model.Crossword.crossword(
     width: size.width,
@@ -72,6 +103,7 @@ Stream<model.WorkQueue> workQueue(Ref ref) async* {
     data: (wordList) => exploreCrosswordSolutions(
       crossword: emptyCrossword,
       wordList: wordList,
+      maxWorkerCount: workers.count,
     ),
     error: (error, stackTrace) async* {
       debugPrint('Error cargando la lista de palabras: $error');

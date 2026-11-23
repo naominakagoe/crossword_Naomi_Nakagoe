@@ -21,7 +21,7 @@ class CrosswordWidget extends ConsumerWidget {
     );
   }
 
-  TableViewCell _buildCell(BuildContext context, TableVicinity vicinity) {
+    TableViewCell _buildCell(BuildContext context, TableVicinity vicinity) {
     final location = Location.at(vicinity.column, vicinity.row);
 
     return TableViewCell(
@@ -37,16 +37,32 @@ class CrosswordWidget extends ConsumerWidget {
             ),
           );
 
+          final explorationCell = ref.watch(
+            workQueueProvider.select(
+              (workQueueAsync) => workQueueAsync.when(
+                data: (workQueue) =>
+                    workQueue.locationsToTry.keys.contains(location),
+                error: (error, stackTrace) => false,
+                loading: () => false,
+              ),
+            ),
+          );
+
           if (character != null) {
-            return Container(
-              color: Theme.of(context).colorScheme.onPrimary,
+            final colors = Theme.of(context).colorScheme;
+            return AnimatedContainer(
+              duration: Durations.extralong1,
+              curve: Curves.easeInOut,
+              color: explorationCell ? colors.primary : colors.onPrimary,
               child: Center(
-                child: Text(
-                  character.character,
+                child: AnimatedDefaultTextStyle(
+                  duration: Durations.extralong1,
+                  curve: Curves.easeInOut,
                   style: TextStyle(
                     fontSize: 24,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: explorationCell ? colors.onPrimary : colors.primary,
                   ),
+                  child: Text(character.character),
                 ),
               ),
             );
