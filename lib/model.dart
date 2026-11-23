@@ -117,12 +117,99 @@ abstract class CrosswordCharacter
 abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
   static Serializer<Crossword> get serializer => _$crosswordSerializer;
 
-  Crossword addWord({
+    /// Verifica que el crucigrama cumpla las reglas de un crucigrama en inglés.
+  bool get valid {
+    // No puede haber palabras repetidas.
+    final wordSet = words.map((word) => word.word).toBuiltSet();
+    if (wordSet.length != words.length) {
+      return false;
+    }
+
+    for (final entry in characters.entries) {
+      final location = entry.key;
+      final character = entry.value;
+
+      // Todo carácter tiene que pertenecer a una palabra.
+      if (character.acrossWord == null && character.downWord == null) {
+        return false;
+      }
+
+      // Todo carácter tiene que estar dentro de la grilla.
+      if (location.x < 0 ||
+          location.y < 0 ||
+          location.x >= width ||
+          location.y >= height) {
+        return false;
+      }
+
+      // Los vecinos de arriba y abajo tienen que ser de la misma palabra vertical.
+      final up = characters[location.up];
+      if (up != null) {
+        if (character.downWord == null) return false;
+        if (up.downWord != character.downWord) return false;
+      }
+      final down = characters[location.down];
+      if (down != null) {
+        if (character.downWord == null) return false;
+        if (down.downWord != character.downWord) return false;
+      }
+
+      // Los vecinos de izquierda y derecha tienen que ser de la misma palabra horizontal.
+      final left = characters[location.left];
+      if (left != null) {
+        if (character.acrossWord == null) return false;
+        if (left.acrossWord != character.acrossWord) return false;
+      }
+      final right = characters[location.right];
+      if (right != null) {
+        if (character.acrossWord == null) return false;
+        if (right.acrossWord != character.acrossWord) return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Agrega una palabra. Devuelve null si la ubicación no es válida.
+  Crossword? addWord({
     required Location location,
     required String word,
     required Direction direction,
   }) {
-    return rebuild(
+    // La palabra no puede estar ya en el crucigrama.
+    if (words.map((crosswordWord) => crosswordWord.word).contains(word)) {
+      return null;
+    }
+
+    var overlap = false;
+
+    for (final (index, character) in word.characters.indexed) {
+      final characterLocation = switch (direction) {
+        Direction.across => location.rightOffset(index),
+        Direction.down => location.downOffset(index),
+      };
+
+      final target = characters[characterLocation];
+      if (target != null) {
+        overlap = true;
+        // Si la celda está ocupada, la letra tiene que coincidir.
+        if (target.character != character) {
+          return null;
+        }
+        // Y no puede haber otra palabra en la misma dirección.
+        if (direction == Direction.across && target.acrossWord != null ||
+            direction == Direction.down && target.downWord != null) {
+          return null;
+        }
+      }
+    }
+
+    // Después de la primera, cada palabra tiene que cruzarse con otra.
+    if (words.isNotEmpty && !overlap) {
+      return null;
+    }
+
+    final candidate = rebuild(
       (b) => b
         ..words.add(
           CrosswordWord.word(
@@ -132,6 +219,12 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
           ),
         ),
     );
+
+    if (candidate.valid) {
+      return candidate;
+    } else {
+      return null;
+    }
   }
 
   @BuiltValueHook(finalizeBuilder: true)
