@@ -1,8 +1,13 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:built_collection/built_collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'model.dart' as model;
+import 'utils.dart';
 
 part 'providers.g.dart';
 
@@ -10,13 +15,82 @@ part 'providers.g.dart';
 Future<BuiltSet<String>> wordList(Ref ref) async {
   final re = RegExp(r'^[a-z]+$');
   final words = await rootBundle.loadString('assets/words.txt');
-  return const LineSplitter()
-      .convert(words)
-      .toBuiltSet()
-      .rebuild(
+  return const LineSplitter().convert(words).toBuiltSet().rebuild(
         (b) => b
           ..map((word) => word.toLowerCase().trim())
           ..where((word) => word.length > 2)
           ..where((word) => re.hasMatch(word)),
       );
+}
+
+enum CrosswordSize {
+  small(width: 20, height: 11),
+  medium(width: 40, height: 22),
+  large(width: 80, height: 44),
+  xlarge(width: 160, height: 88),
+  xxlarge(width: 500, height: 500);
+
+  const CrosswordSize({required this.width, required this.height});
+
+  final int width;
+  final int height;
+  String get label => '$width x $height';
+}
+
+@Riverpod(keepAlive: true)
+class Size extends _$Size {
+  var _size = CrosswordSize.medium;
+
+  @override
+  CrosswordSize build() => _size;
+
+  void setSize(CrosswordSize size) {
+    _size = size;
+    ref.invalidateSelf();
+  }
+}
+
+final _random = Random();
+
+@riverpod
+Stream<model.Crossword> crossword(Ref ref) async* {
+  final size = ref.watch(sizeProvider);
+  final wordListAsync = ref.watch(wordListProvider);
+
+  var crossword = model.Crossword.crossword(
+    width: size.width,
+    height: size.height,
+  );
+
+  yield* wordListAsync.when(
+    data: (wordList) async* {
+      while (crossword.characters.length <
+          size.width * size.height * 0.8) {
+        final word = wordList.randomElement();
+        final direction = _random.nextBool()
+            ? model.Direction.across
+            : model.Direction.down;
+        final location = model.Location.at(
+          _random.nextInt(size.width),
+          _random.nextInt(size.height),
+        );
+
+        crossword = crossword.addWord(
+          word: word,
+          direction: direction,
+          location: location,
+        );
+        yield crossword;
+        await Future.delayed(Duration(milliseconds: 100));
+      }
+      yield crossword;
+    },
+    error: (error, stackTrace) async* {
+      debugPrint('Error cargando la lista de palabras: $error');
+      yield crossword;
+    },
+    loading: () async* {
+      yield crossword;
+    },
+  );
 }
